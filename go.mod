@@ -1,3 +1,3 @@
-module github.com/hyperx/packages/templates
+module github.com/SeaBassLab/hyperx-templates
 
 go 1.21
