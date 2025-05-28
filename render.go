@@ -8,35 +8,38 @@ import (
 )
 
 type Renderer struct {
-	viewsDir    string
-	layout      string
-	cache       map[string]*template.Template
-	mu          sync.RWMutex
+	viewsDir     string
+	layout       string
+	cache        map[string]*template.Template
+	mu           sync.RWMutex
 	isProduction bool
 }
 
 func NewRenderer(viewsDir string, isProduction bool) *Renderer {
 	return &Renderer{
-		viewsDir:    viewsDir,
-		layout:      "_layout.html",
-		cache:       make(map[string]*template.Template),
+		viewsDir:     viewsDir,
+		layout:       "_layout.html",
+		cache:        make(map[string]*template.Template),
 		isProduction: isProduction,
 	}
 }
 
 func (r *Renderer) Render(w http.ResponseWriter, page string, data interface{}) {
+	funcs := template.FuncMap{
+		"IsDev": func() bool { return !r.isProduction },
+	}
+
 	if r.isProduction {
 		r.mu.RLock()
 		tmpl, ok := r.cache[page]
 		r.mu.RUnlock()
 
 		if !ok {
-			// No está en cache, parsear y guardar
 			layoutPath := filepath.Join(r.viewsDir, r.layout)
 			pagePath := filepath.Join(r.viewsDir, page)
 
-			var err error
-			tmpl, err = template.ParseFiles(layoutPath, pagePath)
+			// Parse con FuncMap
+			tmpl, err := template.New("layout").Funcs(funcs).ParseFiles(layoutPath, pagePath)
 			if err != nil {
 				http.Error(w, "Error parsing templates: "+err.Error(), http.StatusInternalServerError)
 				return
@@ -48,6 +51,9 @@ func (r *Renderer) Render(w http.ResponseWriter, page string, data interface{}) 
 		}
 
 		// Ejecutar template cacheado
+		r.mu.RLock()
+		tmpl = r.cache[page]
+		r.mu.RUnlock()
 		err := tmpl.ExecuteTemplate(w, r.layout, map[string]interface{}{
 			"Page": page,
 			"Data": data,
@@ -57,11 +63,11 @@ func (r *Renderer) Render(w http.ResponseWriter, page string, data interface{}) 
 		}
 
 	} else {
-		// Dev mode: parsear siempre para ver cambios sin reiniciar
+		// Dev mode: parsear siempre
 		layoutPath := filepath.Join(r.viewsDir, r.layout)
 		pagePath := filepath.Join(r.viewsDir, page)
 
-		tmpl, err := template.ParseFiles(layoutPath, pagePath)
+		tmpl, err := template.New("layout").Funcs(funcs).ParseFiles(layoutPath, pagePath)
 		if err != nil {
 			http.Error(w, "Error parsing templates: "+err.Error(), http.StatusInternalServerError)
 			return
